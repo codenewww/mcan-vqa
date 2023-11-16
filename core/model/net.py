@@ -16,6 +16,7 @@ import torch
 # ---- Flatten the sequence ----
 # ------------------------------
 
+#定义了一个基于注意力机制的模块，用于处理输入并生成融合后的输出
 class AttFlat(nn.Module):
     def __init__(self, __C):
         super(AttFlat, self).__init__()
@@ -131,6 +132,7 @@ class Net(nn.Module):
 
 
     # Masking
+    #目的是生成一个与输入张量形状相同的布尔掩码（mask），过滤或标记输入张量中满足某些条件的元素
     def make_mask(self, feature):
         return (torch.sum(
             torch.abs(feature),
