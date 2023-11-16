@@ -56,7 +56,10 @@ class Execution:
             net = nn.DataParallel(net, device_ids=self.__C.DEVICES)
 
         # Define the binary cross entropy loss
+        #这种损失函数通常用于二分类问题，其中模型的输出是概率值，表示样本属于正类的概率。
+        #损失函数通过将模型输出与实际标签进行比较，衡量模型输出与真实标签之间的差异，并尽量减小这种差异。
         # loss_fn = torch.nn.BCELoss(size_average=False).cuda()
+        #reduction指定损失的计算方式，此处是对每个样本的损失进行求和
         loss_fn = torch.nn.BCELoss(reduction='sum').cuda()
 
         # Load checkpoint if resume training
@@ -81,14 +84,16 @@ class Execution:
 
             # Load the optimizer paramters
             optim = get_optim(self.__C, net, data_size, ckpt['lr_base'])
+            #断点训练step参考
             optim._step = int(data_size / self.__C.BATCH_SIZE * self.__C.CKPT_EPOCH)
             optim.optimizer.load_state_dict(ckpt['optimizer'])
 
             start_epoch = self.__C.CKPT_EPOCH
 
         else:
+            #目的是在某些情况下清除之前保存的模型检查点，以确保新的模型训练时保存在一个干净的检查点文件夹中
             if ('ckpt_' + self.__C.VERSION) in os.listdir(self.__C.CKPTS_PATH):
-                shutil.rmtree(self.__C.CKPTS_PATH + 'ckpt_' + self.__C.VERSION)
+                shutil.rmtree(self.__C.CKPTS_PATH + 'ckpt_' + self.__C.VERSION)#删除整个文件夹及其内容
 
             os.mkdir(self.__C.CKPTS_PATH + 'ckpt_' + self.__C.VERSION)
 
@@ -136,6 +141,7 @@ class Execution:
             logfile.close()
 
             # Learning Rate Decay
+            #学习率衰减
             if epoch in self.__C.LR_DECAY_LIST:
                 adjust_lr(optim, self.__C.LR_DECAY_R)
 
@@ -159,6 +165,7 @@ class Execution:
 
                 for accu_step in range(self.__C.GRAD_ACCU_STEPS):
 
+                    #每次用切片选取一部分子批次，多次操作进行梯度累积
                     sub_img_feat_iter = \
                         img_feat_iter[accu_step * self.__C.SUB_BATCH_SIZE:
                                       (accu_step + 1) * self.__C.SUB_BATCH_SIZE]
@@ -200,6 +207,7 @@ class Execution:
                         ), end='          ')
 
                 # Gradient norm clipping
+                #实现了梯度范数的裁剪，用于防止梯度爆炸问题
                 if self.__C.GRAD_NORM_CLIP > 0:
                     nn.utils.clip_grad_norm_(
                         net.parameters(),
@@ -208,8 +216,10 @@ class Execution:
 
                 # Save the gradient information
                 for name in range(len(named_params)):
+                    #计算当前参数梯度的L2范数
                     norm_v = torch.norm(named_params[name][1].grad).cpu().data.numpy() \
                         if named_params[name][1].grad is not None else 0
+                    #将当前参数的梯度 L2 范数乘以梯度累积的步数加到对应的梯度统计信息中
                     grad_norm[name] += norm_v * self.__C.GRAD_ACCU_STEPS
                     # print('Param %-3s Name %-80s Grad_Norm %-20s'%
                     #       (str(grad_wt),
@@ -219,7 +229,7 @@ class Execution:
                 optim.step()
 
             time_end = time.time()
-            print('Finished in {}s'.format(int(time_end-time_start)))
+            print('Finished in {}s'.format(int(time_end-time_start)))#计算一个epoch时间
 
             # print('')
             epoch_finish = epoch + 1
@@ -278,6 +288,7 @@ class Execution:
             #     logfile.write('\n')
             #     logfile.close()
 
+            #损失和梯度清零
             loss_sum = 0
             grad_norm = np.zeros(len(named_params))
 
@@ -356,6 +367,7 @@ class Execution:
             pred_argmax = np.argmax(pred_np, axis=1)
 
             # Save the answer index
+            #目的是确保预测结果的数量符合期望的批次大小，如果不符合，则在答案索引中进行填充
             if pred_argmax.shape[0] != self.__C.EVAL_BATCH_SIZE:
                 pred_argmax = np.pad(
                     pred_argmax,
@@ -414,6 +426,7 @@ class Execution:
 
             print('Save the result to file: {}'.format(result_eval_file))
 
+        #json.dump: 是 Python 中用于将 Python 对象转换为 JSON 格式并写入文件的方法。
         json.dump(result, open(result_eval_file, 'w'))
 
         # Save the whole prediction vector
@@ -439,6 +452,7 @@ class Execution:
                 'question_id': int(qid_list[qix])
             }for qix in range(qid_list.__len__())]
 
+           #对象数据以二进制写入指定文件
             pickle.dump(result_pred, open(ensemble_file, 'wb+'), protocol=-1)
 
 
@@ -449,10 +463,10 @@ class Execution:
             ans_file_path = self.__C.ANSWER_PATH['val']
 
             vqa = VQA(ans_file_path, ques_file_path)
-            vqaRes = vqa.loadRes(result_eval_file, ques_file_path)
+            vqaRes = vqa.loadRes(result_eval_file, ques_file_path)#使用创建的VQA评估器加载了待评估的结果文件和问题文件。
 
             # create vqaEval object by taking vqa and vqaRes
-            vqaEval = VQAEval(vqa, vqaRes, n=2)  # n is precision of accuracy (number of places after decimal), default is 2
+            vqaEval = VQAEval(vqa, vqaRes, n=2)  # n is precision of accuracy (number of places after decimal保留小数点后位数), default is 2
 
             # evaluate results
             """
@@ -508,6 +522,7 @@ class Execution:
 
     def run(self, run_mode):
         if run_mode == 'train':
+            #用于开始一个新的训练过程
             self.empty_log(self.__C.VERSION)
             self.train(self.dataset, self.dataset_eval)
 
