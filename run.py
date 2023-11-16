@@ -119,6 +119,7 @@ def parse_args():
 
 
 if __name__ == '__main__':
+    #目的是读取配置文件、解析命令行参数，配置超参数，并运行一个实验，该实验使用了配置类 Cfgs 和执行类 Execution。
     __C = Cfgs()
 
     args = parse_args()
